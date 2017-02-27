@@ -1,0 +1,354 @@
+setwd("C:/Users/Carbon/Desktop/DATA/HP ultimo/pentdrives HP/2")
+
+train <- read.table("train.csv", sep=",", header=TRUE)
+test <- read.table("test.csv", sep=",", header=TRUE)
+cat.var.names <- c(paste("Product_Info_", c(1:3,5:7), sep=""), paste("Employment_Info_", c(2,3,5), sep=""), paste("InsuredInfo_", 1:7, sep=""), paste("Insurance_History_", c(1:4,7:9), sep=""), "Family_Hist_1", paste("Medical_History_", c(2:14, 16:23, 25:31, 33:41), sep=""))
+cont.var.names <- c("Product_Info_4", "Ins_Age", "Ht", "Wt", "BMI", "Employment_Info_1", "Employment_Info_4", "Employment_Info_6", "Insurance_History_5", "Family_Hist_2", "Family_Hist_3", "Family_Hist_4", "Family_Hist_5")
+disc.var.names <- c("Medical_History_1", "Medical_History_15", "Medical_History_24", "Medical_History_32", paste("Medical_Keyword_", 1:48, sep=""))
+
+
+train.cat <- train[, cat.var.names]
+test.cat <- test[, cat.var.names]
+
+train.cont <- train[, cont.var.names]
+test.cont <- test[, cont.var.names]
+
+train.disc <- train[, disc.var.names]
+test.disc <- test[, disc.var.names]
+##################### borro los valores NA de train.cont ######################
+library("e1071")
+source("deleteNA.R")
+#Incluyo en train.cont las etiquetas para poder hacer el modelo svm
+train.cont$Response<-train$Response
+#Elimino los NA
+train.cont.NAout<-deleteNA(train.cont)
+#Transformo las etiquetas de Response en 0,1 para
+train.cont.NAout[(which(train.cont.NAout$Response<=4)),"Response"]<-0
+train.cont.NAout[(which(train.cont.NAout$Response>4)),"Response"]<-1
+
+################ train, valid y test set ####################
+train_set<-train.cont.NAout
+valid_set<-train.cont.NAout
+test_set<-train.cont.NAout
+
+###################tomo pequeña muestra del total del conjunto###########
+index<-1:7000
+
+
+prudent<-train.cont.NAout[index, ]
+#valid_set<-train.cont.NAout[index, ]
+#test_set<-train.cont.NAout[index, ]
+
+
+######################################################################
+#############Data split:createDataPartition###########################
+######################################################################
+
+# load the libraries
+library(caret)
+library(klaR)
+library(randomForest)
+
+# define an 80%/20% train/test split of the dataset
+trainIndex <- createDataPartition(prudent$Response, p=0.80, list=FALSE) #?????
+
+prudent[,"Response"]<-as.factor(prudent[,"Response"])
+
+data_train <- prudent[ trainIndex,] #los índices son una muestra aleat de los 7000
+data_test <- prudent[-trainIndex,]
+
+prudent[,"Response"]<-as.factor(prudent[,"Response"])
+
+# train a randomForest model
+model <- randomForest(data_train[,-14],data_train[,14])# $usekernel,$varnames,attr(,"class")
+
+# make predictions
+predictions <- (predict( model , data_test[,-14]))# $class,$posterior
+
+# summarize results
+confusionMatrix(predictions, data_test[,14])#compara pred & data_test
+
+Confusion Matrix and Statistics
+
+            Reference
+Prediction    0    1
+         0   66   49
+         1  262 1023
+
+Accuracy : 0.7779          
+95% CI : (0.7552, 0.7994)
+No Information Rate : 0.7657          
+P-Value [Acc > NIR] : 0.1488          
+
+Kappa : 0.2007          
+Mcnemar s Test P-Value : <2e-16          
+
+Sensitivity : 0.20122         
+Specificity : 0.95429         
+Pos Pred Value : 0.57391         
+Neg Pred Value : 0.79611         
+Prevalence : 0.23429         
+Detection Rate : 0.04714         
+Detection Prevalence : 0.08214         
+Balanced Accuracy : 0.57776         
+
+'Positive' Class : 0  
+
+######################################################################
+######Bootstrap resampling involves taking random samples#############
+######from the dataset (with re-selection) against which##############
+######to evaluate the model(trainControl, train) #####################
+######################################################################
+index<-1:5000
+prudent<-train.cont.NAout[index, ]
+
+
+train_control <- trainControl(method="boot", number=10)
+
+prudent[,"Response"]<-as.factor(prudent[,"Response"]) #para hacer modelo de clasificación
+
+# train the model 
+model <- train(Response~., data=prudent, trControl=train_control, method="rf")
+model
+
+# Random Forest 
+# 
+# 7000 samples
+# 13 predictor
+# 2 classes: '0', '1' 
+# 
+# No pre-processing
+# Resampling: Bootstrapped (10 reps) 
+# Summary of sample sizes: 7000, 7000, 7000, 7000, 7000, 7000, ... 
+# Resampling results across tuning parameters:
+#   
+#   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD  
+# 2    0.7514628  0.1535883  0.006707224  0.01530528
+# 7    0.7478597  0.1620227  0.008584531  0.01447738
+# 13    0.7462720  0.1641294  0.008185529  0.01709830
+# 
+# Accuracy was used to select the optimal model using  the
+# largest value.
+# The final value used for the model was mtry = 2. 
+
+index_new <-5001:7000
+test_new <-  train.cont.NAout[index_new, ]
+
+# make predictions
+predictions <- (predict( model , test_new[,-14]))# $class,$posterior
+
+# summarize results
+confusionMatrix(predictions, test_new[,14])
+    
+# Confusion Matrix and Statistics
+# 
+# Reference
+# Prediction    0    1
+# 0   95   64
+# 1  417 1424
+# 
+# Accuracy : 0.7595          
+# 95% CI : (0.7401, 0.7781)
+# No Information Rate : 0.744           
+# P-Value [Acc > NIR] : 0.05833         
+# 
+# Kappa : 0.1842          
+# Mcnemar's Test P-Value : < 2e-16         
+#                                           
+#             Sensitivity : 0.1855          
+#             Specificity : 0.9570          
+#          Pos Pred Value : 0.5975          
+#          Neg Pred Value : 0.7735          
+#              Prevalence : 0.2560          
+#          Detection Rate : 0.0475          
+#    Detection Prevalence : 0.0795          
+#       Balanced Accuracy : 0.5713          
+#                                           
+#        'Positive' Class : 0      
+# 
+# 
+
+
+
+
+
+######################################################################
+################## Validación cruzada k veces: #######################
+########### Método para ajustar el sesgo de la estimación ############
+######################################################################
+
+index<-1:5000
+prudent<-train.cont.NAout[index, ]
+
+# define training control
+train_control <- trainControl(method="cv", number=10)
+
+prudent[,"Response"]<-as.factor(prudent[,"Response"]) #para hacer modelo de clasificación
+
+# train the model 
+model <- train(Response~., data=prudent, trControl=train_control, method="rf")
+model
+Random Forest 
+
+# 5000 samples
+# 13 predictor
+# 2 classes: '0', '1' 
+# 
+# No pre-processing
+# Resampling: Cross-Validated (10 fold) 
+# Summary of sample sizes: 4500, 4500, 4500, 4500, 4500, 4500, ... 
+# Resampling results across tuning parameters:
+#   
+#   mtry  Accuracy  Kappa      Accuracy SD  Kappa SD  
+# 2    0.7550    0.1758239  0.012762793  0.04325996
+# 7    0.7518    0.1914997  0.007743097  0.02308556
+# 13    0.7488    0.1874824  0.012299955  0.04061726
+# 
+# Accuracy was used to select the optimal model using  the
+# largest value.
+# The final value used for the model was mtry = 2. 
+
+index_new <-5001:7000
+test_new <-  train.cont.NAout[index_new, ]
+
+# make predictions
+predictions <- (predict( model , test_new[,-14]))# $class,$posterior
+
+# summarize results
+confusionMatrix(predictions, test_new[,14])
+
+# Confusion Matrix and Statistics
+# 
+# Reference
+# Prediction    0    1
+# 0   94   68
+# 1  418 1420
+# 
+# Accuracy : 0.757           
+# 95% CI : (0.7376, 0.7757)
+# No Information Rate : 0.744           
+# P-Value [Acc > NIR] : 0.09517         
+# 
+# Kappa : 0.1777          
+# Mcnemar's Test P-Value : < 2e-16         
+# 
+# Sensitivity : 0.1836          
+# Specificity : 0.9543          
+# Pos Pred Value : 0.5802          
+# Neg Pred Value : 0.7726          
+# Prevalence : 0.2560          
+# Detection Rate : 0.0470          
+# Detection Prevalence : 0.0810          
+# Balanced Accuracy : 0.5689          
+# 
+# 'Positive' Class : 0           
+
+#########################################################################
+####################Repetida k veces validación cruzada##################
+##El proceso de dividir los datos en k-pliegues se puede repetir varias##
+##veces, esto se llama repetida-k veces validación cruzada. La precisión# 
+##del modelo final se toma como la media del número de repeticiones######
+#########################################################################
+index<-1:5000
+prudent<-train.cont.NAout[index, ]
+
+##10 veces con 3 repeticiones##
+
+# define training control
+train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+
+prudent[,"Response"]<-as.factor(prudent[,"Response"]) #xa modelo de clasificación("nb" y "rf")
+
+# train the model 
+model <- train(Response~., data = prudent, trControl=train_control, method="rf")
+model
+
+# Random Forest 
+# 
+# 5000 samples
+# 13 predictor
+# 2 classes: '0', '1' 
+# 
+# No pre-processing
+# Resampling: Cross-Validated (10 fold, repeated 3 times) 
+# Summary of sample sizes: 4500, 4500, 4500, 4500, 4500, 4500, ... 
+# Resampling results across tuning parameters:
+#   
+#   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD  
+# 2    0.7532667  0.1714315  0.009269651  0.03477889
+# 7    0.7508000  0.1844498  0.012710029  0.04282139
+# 13    0.7474667  0.1814811  0.012238248  0.03977649
+# 
+# Accuracy was used to select the optimal model using  the
+# largest value.
+# The final value used for the model was mtry = 2. 
+
+
+index_new <-5001:7000
+test_new <-  train.cont.NAout[index_new, ]
+
+# make predictions
+predictions <- (predict( model , test_new[,-14]))# $class,$posterior
+
+# summarize results
+confusionMatrix(predictions, test_new[,14])
+
+# Confusion Matrix and Statistics
+# 
+# Reference
+# Prediction    0    1
+# 0   88   64
+# 1  424 1424
+# 
+# Accuracy : 0.756           
+# 95% CI : (0.7366, 0.7747)
+# No Information Rate : 0.744           
+# P-Value [Acc > NIR] : 0.1139          
+# 
+# Kappa : 0.1675          
+# Mcnemar's Test P-Value : <2e-16          
+# 
+# Sensitivity : 0.1719          
+# Specificity : 0.9570          
+# Pos Pred Value : 0.5789          
+# Neg Pred Value : 0.7706          
+# Prevalence : 0.2560          
+# Detection Rate : 0.0440          
+# Detection Prevalence : 0.0760          
+# Balanced Accuracy : 0.5644          
+# 
+# 'Positive' Class : 0      
+
+#########################################################################
+####En dejar una salida Cruz de validación (LOOCV), una instancia########
+####de datos se quede fuera y un modelo construido sobre todas las demás#
+####instancias de datos en el conjunto de entrenamiento.#################
+#########################################################################
+# index<-1:5000
+# prudent<-train.cont.NAout[index, ]
+# 
+# # define training control
+# train_control <- trainControl(method="LOOCV")
+# 
+# prudent[,"Response"]<-as.factor(prudent[,"Response"]) #xa modelo de clasificación("nb" y "rf")
+# 
+# # train the model
+# model <- train(Response~., data=prudent, trControl=train_control, method="rf")
+# model
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# index_new <-5001:7000
+# test_new <-  train.cont.NAout[index_new, ]
+# 
+# # make predictions
+# predictions <- (predict( model , test_new[,-14]))# $class,$posterior
+# 
+# # summarize results
+# confusionMatrix(predictions, test_new[,14])
+
+
